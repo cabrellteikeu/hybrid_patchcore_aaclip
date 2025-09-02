@@ -52,13 +52,13 @@ temp/
 dataset/masks
 cache/
 .cache/
-banks/
+#banks/
 banks/**/*
 live_images/input/
 live_images/processed/
 
 # --- Modelle & Checkpoints (NIEMALS ins Repo)
-*.pt
+#*.pt
 *.pth
 *.ckpt
 *.onnx
