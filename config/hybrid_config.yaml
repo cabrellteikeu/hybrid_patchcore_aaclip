@@ -1,0 +1,121 @@
+device: "cuda"           # "cuda" | "cpu"
+input_dir: "live_images/incoming_images"
+processed_dir: "live_images/processed_images"
+
+
+pipeline:
+  mode: "ensemble"            # "pc_only" | "dino_only" | "ensemble"
+  explain_on_anomaly: true
+
+patchcore:
+  ckpt_path: "models/patchcore/model_renet50_01_w0_t4.ckpt"
+  modul_name: "custom"
+  image_size: [256, 256]
+  threshold: 0.7         
+  image_dir: "data/cleaned"
+  good_folder: "good"
+  heatmap_dir: "results/patchcore/heatmaps"
+  backbone: "wide_resnet50_2"
+  layers: ""
+
+zsclip:
+  model_name: "ViT-L-14-336"
+  tta_scales: [1.0, 0.9, 1.1]
+  temperature: 0.01           # kleiner = schärfer
+  topk: 3
+
+aaclip:
+  repo_root: "C:/Users/Basti/AA-CLIP"
+  data_root: "C:/Users/Basti/AA-CLIP/data"
+  shot: 2
+  save_root: "C:/Users/Basti/AA-CLIP/runs"
+  support_json: "C:/Users/Basti/AA-CLIP/dataset/metadata/Bucket/2-shot.jsonl"
+  test_tmp_dir: "C:/Users/Basti/hybrid_patchcore_aaclip/results/aaclip/tmp_infer"     # pro Anfrage Bild+Ergebnis
+  full_json_path: "C:/Users/Basti/AA-CLIP/dataset/metadata/Bucket/full-shot.jsonl"
+  backbone: "ViT-L-14-336" #"RN50"        # oder "ViT-B/16"
+  model_name: "ViT-L-14-336" #"ViT-H-14"  
+  topk: 3
+  timeout_sec: 6000
+  temperature: 0.10
+  tta_scales: [0.90, 1.00, 1.10]
+  cache_dir: "cache/clip_vitl14_336"
+  support_dir: "support"
+  normal_key: normal         
+  abnormal_key: defective 
+
+textdefect:
+  backend: "aa_clip"             # "clip_ad" | "aa_clip" | "promptad"
+  model_name: "ViT-L-14-336" #"ViT-B-16"         # für Raspberry klein halten; B/16 @ 224 ist robust & schnell
+  pretrained: "openai"
+  tta_scales: [0.90, 1.00, 1.10]
+  temperature: 0.12
+  text_weight: 0.50
+  topk: 3
+  prompt_templates:
+    - "{x}"
+    - "a photo of {x}"
+    - "bucket with {x}"
+    - "industrial bucket: {x}"
+  synonyms_per_class: 0
+  support_dir: "support"         # Ordner mit Unterordnern pro Defektklasse (optional)
+  max_support_per_class: 20
+  cache_dir: "cache/textdefect"
+  save_root: "runs/textdefect"
+  enable_heatmap: true
+
+dino:
+  enable: true
+  model_name: "vit_large_patch14_dinov2.lvd142m"  # DINOv2 ViT-L/14
+  bank_dir: "banks/dino"
+  max_bank_patches: 20000          # harte Obergrenze – subsample wenn mehr
+  top_p: 0.02                      # Aggregation: Mittel der Top-2% Patchscores
+  use_half: true                   # FP16 auf CUDA
+  enroll_resize: null              # null = nutze timm-Transform
+  faiss: false                     # optional: falls du später FAISS willst
+  thresholds_path: "calibration/dino_thresholds.json"
+  q_accept: 0.995                  # Quantile für OK
+  q_reject: 0.999                  # Quantile für DEFECT
+  sim_chunk_size: 32768
+  threshold: 0.25
+
+zeroshot:
+  enable: true
+  model_name: "ViT-L-14-336"           # OpenCLIP Modellname
+  pretrained: "openai"                 # oder z.B. "laion2b_s32b_b82k"
+  topk: 3
+  temperature: 0.10                    # Softmax-Temp für Text-Score
+  scales: [0.70, 0.90, 1.00]           # Fenstergrößen relativ zur kleineren Bildkante
+  overlap: 0.50                        # 0.5 => 50% Überlappung (Stride = win_size*(1-overlap))
+  batch_size: 64                       # Fenster-Batchgröße (GPU)
+  heatmap_threshold: 0.50              # Schwellwert fürs Overlay (0..1)
+  use_half: true                       # FP16 auf CUDA
+  cache_dir: "cache/openclip_vitl14_336"  # optional (Text-Cache)
+  normal_prompts:
+    - "a clean, intact paint bucket"
+    - "paint bucket without any defect"
+    - "undamaged bucket with correct label and closed lid"
+  rel_alpha: 1.0      # Gewicht für 'clean' Konkurrenz (1.0 = guter Start)
+  topq: 0.02          # Aggregation: oberste q% Fenster (statt global max)
+
+preprocess:
+  enabled: true            # global an/aus
+  device: "cpu"           # "cpu" auf dem Raspberry
+  classes: ["a bucket"] #, "paint bucket", "plastic bucket"]
+
+  dino:
+    config: "config/GroundingDINO_SwinT_OGC.py"
+    checkpoint: "models/groundingDINO_SAM/groundingdino_swint_ogc.pth"
+    box_threshold: 0.25
+    text_threshold: 0.25
+    nms_threshold: 0.5
+
+  sam:
+    encoder: "vit_h"       # z.B. vit_b / vit_l / vit_h
+    checkpoint: "models/groundingDINO_SAM/sam_vit_h_4b8939.pth"
+
+  target_size: [1024, 1024]      # Canvas (W,H)
+  background_bgr: [255, 255, 255] # Weiß; für Schwarz [0,0,0]
+
+output:
+  save_heatmaps: true
+  return_base64: false    # wenn true, heatmap als base64 im JSON

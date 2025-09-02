@@ -1,0 +1,4 @@
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\bucket\\good\\cam2_photo_20250131_113346.jpg", "label": 0.0, "class_name": "bucket", "mask_path": "C:\\Users\\Basti\\AA-CLIP\\dataset\\masks\\Bucket\\good\\cam2_photo_20250131_113346_mask.png"}
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\bucket\\good\\cam2_photo_20250208_093442.jpg", "label": 0.0, "class_name": "bucket", "mask_path": "C:\\Users\\Basti\\AA-CLIP\\dataset\\masks\\Bucket\\good\\cam2_photo_20250208_093442_mask.png"}
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\bucket\\bad\\cam1_photo_20250207_075006.jpg", "label": 1.0, "class_name": "bucket", "mask_path": "C:\\Users\\Basti\\AA-CLIP\\dataset\\masks\\Bucket\\bad\\cam1_photo_20250207_075006_mask.png"}
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\bucket\\bad\\cam2_photo_20250208_095623.jpg", "label": 1.0, "class_name": "bucket", "mask_path": "C:\\Users\\Basti\\AA-CLIP\\dataset\\masks\\Bucket\\bad\\cam2_photo_20250208_095623_mask.png"}

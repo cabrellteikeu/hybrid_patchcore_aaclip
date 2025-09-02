@@ -1,0 +1,4 @@
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\train\\good\\cam2_photo_20250205_172555.jpg", "label": 0.0, "class_name": "bucket"}
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\train\\good\\cam2_photo_20250207_135803.jpg", "label": 0.0, "class_name": "bucket"}
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\train\\bad\\cam2_photo_20250208_100152.jpg", "label": 1.0, "class_name": "bucket"}
+{"image_path": "C:\\Users\\Basti\\AA-CLIP\\data\\train\\bad\\cam2_photo_20250207_071804.jpg", "label": 1.0, "class_name": "bucket"}

@@ -1,0 +1,96 @@
+# --- Python / venv / Bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.dylib
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+.eggs/
+*.egg
+*.egg-info/
+
+# --- Jupyter / Editor
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+*.code-workspace
+.vscode/
+.idea/
+.history/
+*.swp
+*.swo
+
+# --- Betriebssystem
+.DS_Store
+Thumbs.db
+Desktop.ini
+*~
+
+# --- Build / Dist
+build/
+dist/
+wheelhouse/
+
+# --- Logs / Runs / Artifacts
+logs/
+*.log
+wandb/
+mlruns/
+runs/
+tensorboard/
+lightning_logs/
+
+# --- Daten / Ergebnisse (lokal generiert)
+data/
+datasets/
+results/
+outputs/
+tmp/
+temp/
+dataset/masks
+cache/
+.cache/
+banks/
+banks/**/*
+live_images/input/
+live_images/processed/
+
+# --- Modelle & Checkpoints (NIEMALS ins Repo)
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.tflite
+*.npz
+*.bin
+*.safetensors
+
+# --- Projekt-spezifische Ordner (generiert)
+results/inference/
+cache/openclip_*/
+cache/openclip_vit*/
+cache/*
+
+# --- Konfigurationen, die sich zur Laufzeit ändern / lokal sind
+config/thresholds.json
+config/*.secret.*
+*.env
+.envrc
+*.pem
+*.crt
+*.key
+
+# --- Bilder/Assets (falls du Beispielbilder NICHT versionieren willst)
+# samples/
+# assets/
+
+# --- Node/Frontend (falls nicht genutzt, kann weg)
+node_modules/
+
+# --- C/CPP (falls mal kompiliert wird)
+*.o
+*.a
+*.out
