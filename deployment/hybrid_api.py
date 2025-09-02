@@ -7,7 +7,6 @@ import io, yaml
 from pathlib import Path
 from PIL import Image, ImageDraw
 from src.patchcore.patchcore_infer import PatchCoreStage
-from src.classify.aaclip_wrapper import AAClipStage
 from src.defects.defect_prompts import DEFECT_PROMPTS  # dict: {name: [variants]}
 #from src.preprocess.runtime_cropper import RuntimeBucketCropper
 #from src.preprocess.bucket_runtime_pipeline import BucketRuntimePipeline
@@ -18,12 +17,10 @@ from src.classify.text_defect_stage import TextDefectStage
 from src.classify.zsclip_defect_stage import ZSClipDefectStage
 from src.preprocess.grounded_sam import GroundedSAMPreprocessor
 
-app = FastAPI(title="Hybrid AD (PatchCore → AA-CLIP)")
+app = FastAPI(title="Hybrid AD (DINO/PatchCore → ZSCLIP/AA-CLIP)")
 
 CFG = yaml.safe_load(Path("config/hybrid_config.yaml").read_text(encoding="utf-8"))
 
-NORMAL_KEY  = str(CFG["aaclip"].get("normal_key","normal"))
-ABN_KEY     = str(CFG["aaclip"].get("abnormal_key","defective"))
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
 def ensure_dirs():
@@ -46,26 +43,6 @@ PATCH = PatchCoreStage(
     image_size=tuple(CFG["patchcore"]["image_size"]),
     device=CFG["device"],
     threshold=CFG["patchcore"]["threshold"],
-)
-
-AAC = AAClipStage(
-    repo_root=CFG["aaclip"]["repo_root"],
-    data_root=CFG["aaclip"]["data_root"],
-    model_name=CFG["aaclip"]["model_name"],
-    shot=int(CFG["aaclip"]["shot"]),
-    save_root=CFG["aaclip"]["save_root"],
-    defect_prompts=DEFECT_PROMPTS,
-    topk=int(CFG["aaclip"]["topk"]),
-    timeout_sec=int(CFG["aaclip"]["timeout_sec"]),
-    return_base64=CFG["output"]["return_base64"],
-    # Performance/Genauigkeit:
-    enable_repo=bool(CFG["aaclip"].get("enable_repo", False)),
-    temperature=float(CFG["aaclip"].get("temperature", 0.10)),
-    text_weight=float(CFG["aaclip"].get("text_weight", 0.4)),
-    tta_scales=tuple(CFG["aaclip"].get("tta_scales", [0.90, 1.00, 1.10])),
-    cache_dir=CFG["aaclip"].get("cache_dir", "cache/openclip_vitl14_336"),
-    support_dir=CFG["aaclip"].get("support_dir", None),
-    max_support_per_class=int(CFG["aaclip"].get("max_support_per_class", 20)),
 )
 
 DINO = DinoAnomalyStage(
@@ -150,24 +127,6 @@ if CFG.get("preprocess", {}).get("enabled", False):
         print(f"[WARN] GroundedSAMPreprocessor init failed: {e}")
         PRE = None
 
-#RUNTIME = BucketRuntimePipeline()
-#RUNTIME.load_models()
-"""
-def visualize_anomalies(image, anomaly_map, threshold=CFG["patchcore"]["threshold"]):
-    image = image.copy()
-    draw = ImageDraw.Draw(image)
-    width, height = image.size
-
-    for y in range(anomaly_map.shape[0]):
-        for x in range(anomaly_map.shape[1]):
-            if anomaly_map[y, x] > threshold:
-                draw.rectangle([x * (width // anomaly_map.shape[1]), y * (height // anomaly_map.shape[0]),
-                                (x + 1) * (width // anomaly_map.shape[1]), (y + 1) * (height // anomaly_map.shape[0])],
-                               outline="red", width=2)
-    return image
-"""
-
-
 def visualize_anomalies(image, anomaly_map, threshold):
     """Raster-Overlay wie bisher; anomaly_map darf jede Größe haben."""
     image = image.copy()
@@ -189,150 +148,6 @@ def visualize_anomalies(image, anomaly_map, threshold):
 @app.get("/")
 def health():
     return {"status": "ok", "device": CFG["device"]}
-
-"""
-@app.post("/refresh")
-def refresh_thresholds(
-    sku_id: str = Query(CFG["calibration"]["default_sku"]),
-    view: str   = Query(CFG["calibration"]["default_view"]),
-):
-    import glob, numpy as np
-    buf_dir = Path(f"buffers/safe_ok/{sku_id}/{view}")
-    paths = sorted(glob.glob(str(buf_dir / "*.jpg")))
-    if len(paths) < 20:
-        return {"ok": False, "error": "zu wenige safe-OK Bilder im Buffer (<20)", "count": len(paths)}
-    scores = [float(PATCH.predict(Image.open(p).convert("RGB"))["score"]) for p in paths]
-    q_a = float(CFG["calibration"]["q_accept"]); q_r = float(CFG["calibration"]["q_reject"])
-    tau_a = float(np.quantile(np.array(scores, dtype=np.float32), q_a))
-    tau_r = float(np.quantile(np.array(scores, dtype=np.float32), q_r))
-    th = load_thresholds(TH_PATH); th[key(sku_id, view)] = {"tau_accept": tau_a, "tau_reject": tau_r}
-    save_thresholds(TH_PATH, th)
-    return {"ok": True, "sku_id": sku_id, "view": view, "tau_accept": tau_a, "tau_reject": tau_r, "n": len(scores)}
-
-@app.post("/enroll")
-def enroll(
-    sku_id: str,
-    good_dir_front: str = Body(...),
-    good_dir_back: str  = Body(...),
-    train_script: str = "src/models/train_patchcore.py",   # dein Fit-Skript
-):
-    import subprocess, sys
-    # Idee: du übergibst dem Fit-Skript per ENV/Args die neuen good/ Ordner
-    env = os.environ.copy()
-    env["GOOD_FRONT_DIR"] = good_dir_front
-    env["GOOD_BACK_DIR"]  = good_dir_back
-    try:
-        subprocess.run([sys.executable, train_script], check=True, env=env, timeout=3600)
-        return {"ok": True, "msg": "Coreset neu aufgebaut (siehe neues ckpt). Bitte /calibrate aufrufen."}
-    except subprocess.CalledProcessError as e:
-        return {"ok": False, "error": f"train_script rc={e.returncode}"}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "train_script timeout"}
-
-@app.post("/defect-support")
-def add_defect_support(class_name: str, roi_paths: list[str] = Body(..., embed=True)):
-    # kopiere Bilder in CFG["aaclip"]["support_dir"]/class_name/
-    sd = Path(AAC.support_dir or "support") / class_name
-    sd.mkdir(parents=True, exist_ok=True)
-    for p in roi_paths:
-        pp = Path(p)
-        (sd / pp.name).write_bytes(Path(p).read_bytes())
-    # Cache neu bauen
-    AAC._build_support_cache(sd.parent)
-    return {"ok": True, "class": class_name, "count": len(roi_paths)}
-
-@app.post("/calibrate")
-def calibrate(
-    sku_id: str = Query(CFG["calibration"]["default_sku"]),
-    view: str   = Query(CFG["calibration"]["default_view"]),
-    good_paths: list[str] = Body(..., embed=True),
-):
-    import numpy as np, cv2
-    scores = []
-    for p in good_paths:
-        img = Image.open(p).convert("RGB")
-        s = PATCH.predict(img)["score"]
-        scores.append(float(s))
-    import numpy as np
-    q_a = float(CFG["calibration"]["q_accept"])
-    q_r = float(CFG["calibration"]["q_reject"])
-    tau_a = float(np.quantile(np.array(scores, dtype=np.float32), q_a))
-    tau_r = float(np.quantile(np.array(scores, dtype=np.float32), q_r))
-
-    th = load_thresholds(TH_PATH)
-    th[key(sku_id, view)] = {"tau_accept": tau_a, "tau_reject": tau_r}
-    save_thresholds(TH_PATH, th)
-    return {"ok": True, "sku_id": sku_id, "view": view, "tau_accept": tau_a, "tau_reject": tau_r, "n": len(scores)}
-"""
-
-"""
-@app.post("/predict")
-async def predict(
-    file: UploadFile = File(...),
-    sku_id: str = Query(CFG["calibration"]["default_sku"]),
-    view: str = Query(CFG["calibration"]["default_view"]),
-):
-    try:
-        raw = await file.read()
-        img_pil = Image.open(io.BytesIO(raw)).convert("RGB")
-
-        a = PATCH.predict(img_pil)
-        score = float(a["score"])
-        hmap  = a["anomaly_map"]
-        tau_a, tau_r = get_tau(sku_id, view, CFG["patchcore"]["threshold"])
-
-        state_pc = decide(score, tau_a, tau_r, REVIEW_BAND)
-
-        # ROI-Crop für AA-CLIP (nur bei REVIEW/DEFECT sinnvoll)
-        img_bgr = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-        roi = heatmap_to_roi(img_bgr, hmap, q=0.98, min_size=48) if state_pc != "OK" else None
-        crop_pil = img_pil if roi is None else Image.fromarray(
-            cv2.cvtColor(img_bgr[roi[1]:roi[3], roi[0]:roi[2]], cv2.COLOR_BGR2RGB)
-        )
-
-        # Margin (abnormal - normal)
-        margin = AAC.normal_abnormal_margin(crop_pil, normal_key=NORMAL_KEY, abnormal_key=ABN_KEY)
-
-        # Gegenanker-Regeln
-        state = state_pc
-        if state_pc == "DEFECT" and margin < 0.0:
-            state = "REVIEW"
-        if state_pc == "REVIEW" and margin > 0.8:
-            state = "DEFECT"
-
-        # Safe-OK puffern (für späteres /refresh)
-        if state == "OK":
-            gap_ok = (tau_a - score) / max(tau_a, 1e-6)
-            if gap_ok >= SAFETY_GAP and margin < -0.5:  # konservativ
-                out_dir = Path(f"buffers/safe_ok/{sku_id}/{view}")
-                out_dir.mkdir(parents=True, exist_ok=True)
-                # speichere das Bild (oder nur Embedding/Score – einfach Bild reicht erstmal)
-                out_path = out_dir / (Path(file.filename).stem + ".jpg")
-                img_pil.save(out_path)
-
-        # Visualisierung wie gehabt
-        visualized_image = visualize_anomalies(img_pil, hmap, tau_a)
-        filename = os.path.splitext(file.filename)[0]
-        heatmap_path = os.path.join(CFG["patchcore"]["heatmap_dir"], f"{filename}_overlay.jpg")
-        visualized_image.save(heatmap_path)
-
-        resp = {
-            "patchcore_score": score,
-            "tau_accept": tau_a,
-            "tau_reject": tau_r,
-            "state_patchcore": state_pc,
-            "state_final": state,                  # OK | REVIEW | DEFECT
-            "clip_margin": float(margin),
-            "roi": roi if roi else None,
-        }
-
-        response = FileResponse(heatmap_path, media_type="image/jpeg")
-        response.headers["response"] = json.dumps(resp)
-        return response
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-    
-"""   
 
 @app.post("/dino/enroll")
 def dino_enroll(
@@ -439,190 +254,13 @@ async def zshot_predict(file: UploadFile = File(...)):
         raise
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
-"""    
-@app.post("/predict")
-async def predict(file: UploadFile = File(...),
-                  sku_id: str = Query("default"),
-                  view: str = Query("single"),
-                  explain: int = Query(0)):
-    try:
-        raw = await file.read()
-        img = Image.open(io.BytesIO(raw)).convert("RGB")
-
-        # 1) PatchCore
-        a = PATCH.predict(img)  # {"score", "is_anomalous", "anomaly_map"}
-        pc_score = float(a["score"])
-        pc_tau = float(_cfg("patchcore.threshold", 0.7))
-        pc_map = a["anomaly_map"]  # np.ndarray (HxW oder kleiner)
-
-        # 2) DINO (require_bank=False -> gibt 0er-Heatmap/Score, falls noch nicht enrolled)
-        dino_score, dino_map, dino_meta = DINO.score_image(sku_id, view, img, require_bank=False, return_heatmap=True)
-        if dino_map is None:
-            # falls keine Bank: Null-Map in Bildgröße
-            dino_map = np.zeros((img.size[1], img.size[0]), np.float32)
-
-        # 3) Fused Score/Map (ohne Kalibrierung): max-Logik
-        fused_tau = min(pc_tau, DINO_TAU)  # konservativer Schwellenwert
-        # Heatmap-Größen angleichen
-        H, W = img.size[1], img.size[0]
-        if pc_map.shape != (H, W):
-            pc_map = cv2.resize(pc_map.astype(np.float32), (W, H), interpolation=cv2.INTER_CUBIC)
-        if dino_map.shape != (H, W):
-            dino_map = cv2.resize(dino_map.astype(np.float32), (W, H), interpolation=cv2.INTER_CUBIC)
-
-        fused_map = np.maximum(pc_map.astype(np.float32), dino_map.astype(np.float32))
-        fused_score = max(pc_score, float(dino_score))
-
-        # 4) Entscheidung (einfach, deterministisch)
-        if fused_score <= fused_tau:
-            state = "OK"
-        elif fused_score >= fused_tau * 1.2:
-            state = "DEFECT"
-        else:
-            state = "REVIEW"
-
-        # 5) Nur wenn wirklich Anomalie vermutet → AA-CLIP Erklärung (optional)
-        resp = {
-            "state": state,
-            "scores": {"patchcore": pc_score, "dino": float(dino_score), "fused": fused_score},
-            "thresholds": {"patchcore": pc_tau, "dino": DINO_TAU, "fused": fused_tau},
-        }
-
-        if state != "OK" and explain:
-            b = AAC.infer(img)
-            if b.get("ok") and b.get("topk"):
-                resp["defect_topk"] = b["topk"]
-                if b.get("heatmap_base64"):
-                    resp["heatmap_base64"] = b["heatmap_base64"]
-                else:
-                    resp["heatmap_path"] = b.get("heatmap_path")
-
-        # 6) Overlay speichern (Fused Map)
-        out_dir = _cfg("patchcore.heatmap_dir", "results/inference")
-        os.makedirs(out_dir, exist_ok=True)
-        fname = os.path.splitext(file.filename or "upload")[0]
-        out_path = os.path.join(out_dir, f"{fname}_overlay.jpg")
-        vis = visualize_anomalies(img, fused_map, threshold=fused_tau)
-        vis.save(out_path)
-
-        # FileResponse wie bei dir – JSON in Header
-        response = FileResponse(out_path, media_type="image/jpeg")
-        response.headers["response"] = json.dumps(resp)
-        return response
-
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-""" 
-
-""" 
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    try:
-        raw = await file.read()
-        img = Image.open(io.BytesIO(raw)).convert("RGB")
-
-        #if CROP is not None:
-        #    img = CROP.crop_pil(img)
-        #paths = RUNTIME.process_pil(pil_image=img, image_name="api_input_123")  # schreibt die 3 Artefakte
-# paths["cropped_image_path"]
-        a = PATCH.predict(img)
-        resp = {
-            "is_anomalous": bool(a["is_anomalous"]),
-            "anomaly_score": float(a["score"]),
-        }
-        anomaly_map = a["anomaly_map"]
-        if not a["is_anomalous"]:
-            resp["explanation"] = "sample looks normal (PatchCore)"
-            return JSONResponse(resp)
-
-        b = TD.infer(img)
-        if not b.get("ok", False) and not b.get("topk"):
-            resp["explanation"] = f"TextDefectStage failed: {b.get('error')}"
-            return JSONResponse(resp, status_code=200)
-
-        resp["defect_topk"] = b.get("topk", [])
-        if b.get("heatmap_base64"):
-            resp["heatmap_base64"] = b["heatmap_base64"]
-        else:
-            resp["heatmap_path"] = b.get("heatmap_path")
-
-        visualized_image = visualize_anomalies(img, anomaly_map, CFG["patchcore"]["threshold"])
-
-        # Speichern des visualisierten Bildes
-        os.makedirs(CFG["patchcore"]["heatmap_dir"], exist_ok=True)
-        filename = os.path.splitext(file.filename)[0]
-        heatmap_path = os.path.join(CFG["patchcore"]["heatmap_dir"], f"{filename}_overlay.jpg")
-        visualized_image.save(heatmap_path)
-
-            # Bild als Antwort zurückgeben
-        response = FileResponse(heatmap_path, media_type="image/jpeg")
-        response.headers["response"] = str(resp)#str(resp) #str(score)
-        return response
-
-        #return JSONResponse(resp)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-    
-"""
-
-"""
-# best solution   
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    try:
-        raw = await file.read()
-        img = Image.open(io.BytesIO(raw)).convert("RGB")
-
-        #if CROP is not None:
-        #    img = CROP.crop_pil(img)
-        #paths = RUNTIME.process_pil(pil_image=img, image_name="api_input_123")  # schreibt die 3 Artefakte
-# paths["cropped_image_path"]
-        a = PATCH.predict(img)
-        resp = {
-            "is_anomalous": bool(a["is_anomalous"]),
-            "anomaly_score": float(a["score"]),
-        }
-        anomaly_map = a["anomaly_map"]
-        if not a["is_anomalous"]:
-            resp["explanation"] = "sample looks normal (PatchCore)"
-            return JSONResponse(resp)
-
-        b = AAC.infer(img)
-        if not b.get("ok", False) and not b.get("topk"):
-            resp["explanation"] = f"AA-CLIP failed: {b.get('error')}"
-            return JSONResponse(resp, status_code=200)
-
-        resp["defect_topk"] = b.get("topk", [])
-        if b.get("heatmap_base64"):
-            resp["heatmap_base64"] = b["heatmap_base64"]
-        else:
-            resp["heatmap_path"] = b.get("heatmap_path")
-
-        visualized_image = visualize_anomalies(img, anomaly_map, CFG["patchcore"]["threshold"])
-
-        # Speichern des visualisierten Bildes
-        os.makedirs(CFG["patchcore"]["heatmap_dir"], exist_ok=True)
-        filename = os.path.splitext(file.filename)[0]
-        heatmap_path = os.path.join(CFG["patchcore"]["heatmap_dir"], f"{filename}_overlay.jpg")
-        visualized_image.save(heatmap_path)
-
-            # Bild als Antwort zurückgeben
-        response = FileResponse(heatmap_path, media_type="image/jpeg")
-        response.headers["response"] = str(resp)#str(resp) #str(score)
-        return response
-
-        #return JSONResponse(resp)
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-"""
 
 @app.post("/predict")
 async def predict(
     file: UploadFile = File(...),
     prep: bool | None = Query(None, description="Preprocessor erzwingen (true/false) oder None=Config-Default"),
     engine: str = Query("patchcore", enum=["patchcore", "dino"]),
-    classifier: str = Query("zsclip", enum=["zsclip", "textdefect", "aaclip"]),
+    classifier: str = Query("zsclip", enum=["zsclip", "textdefect"]),
     sku_id: str = Query("default"),
     view: str = Query("single"),
 ):
@@ -666,18 +304,17 @@ async def predict(
             resp["classifier"] = "zsclip"
             resp["defect_topk"] = z.get("topk", [])
             resp["defect_scores"] = z.get("scores", {})
-        elif classifier == "textdefect":
+        else :
             # Falls du deine alte TextDefectStage weiter behalten willst,
             # rufe hier TEXTDEFECT.infer_zero_shot(img) auf.
-            z = ZSCLIP.classify(img)  # Fallback: trotzdem ZSCLIP
-            resp["classifier"] = "textdefect(zsclip-fallback)"
-            resp["defect_topk"] = z.get("topk", [])
-            resp["defect_scores"] = z.get("scores", {})
-        else:  # "aaclip"
-            b = AAC.infer(img)
-            resp["classifier"] = "aaclip"
+            b = TD.infer(img)
+            if not b.get("ok", False) and not b.get("topk"):
+                resp["explanation"] = f"TextDefectStage failed: {b.get('error')}"
+                return JSONResponse(resp, status_code=200)
+            
+            resp["classifier"] = "textdefect(aa-clip-fallback)"
             resp["defect_topk"] = b.get("topk", [])
-            # Normiere ggf. auf score-Key
+            #resp["defect_scores"] = b.get("scores", {})
 
         # --- 3) Overlay speichern & zurückgeben ---
         HEATMAP_DIR = Path(CFG["patchcore"]["heatmap_dir"]).resolve()

@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--watch", action="store_true", help="Ordner dauerhaft überwachen (paarweise Verarbeitung)")
     parser.add_argument("--mode", type=str, choices=["pc_only", "dino_only", "ensemble"], default=None,
                         help="Pipeline-Engine: PatchCore, DINOv2 oder Ensemble (überschreibt Config)")
-    parser.add_argument("--classifier", type=str, choices=["zsclip", "aaclip", "none"], default=None,
+    parser.add_argument("--classifier", type=str, choices=["zsclip", "none"], default=None,
                         help="Defekt-Klassifizierer: Zero-Shot CLIP, AA-CLIP oder keiner (überschreibt Config)")
     args = parser.parse_args()
 

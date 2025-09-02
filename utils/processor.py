@@ -10,7 +10,6 @@ from PIL import Image, ImageDraw
 import cv2  # für Map-Resize bei Fusions-Overlay
 
 from src.patchcore.patchcore_infer import PatchCoreStage
-from src.classify.aaclip_wrapper import AAClipStage
 from src.anomaly_dino.dino_stage import DinoAnomalyStage
 from src.classify.zsclip_defect_stage import ZSClipDefectStage
 from src.preprocess.grounded_sam import GroundedSAMPreprocessor
@@ -68,7 +67,6 @@ class ImageProcessor:
           "ensemble":  PatchCore + DINOv2 (Score/Map-Fusion) -> (Anomalie) Klassifizierer
       - classifier:
           "zsclip": Zero-Shot OpenCLIP
-          "aaclip": dein AA-CLIP Wrapper
           "none":   keine Textklassifikation
 
     Schreibt nur Overlay nach CFG['processed_dir'].
@@ -156,27 +154,6 @@ class ImageProcessor:
                 defect_prompts=_PROMPTS,
             )
 
-        self.aac = None
-        if self.classifier == "aaclip":
-            self.aac = AAClipStage(
-                repo_root=self.cfg["aaclip"]["repo_root"],
-                data_root=self.cfg["aaclip"]["data_root"],
-                model_name=self.cfg["aaclip"]["model_name"],
-                shot=int(self.cfg["aaclip"]["shot"]),
-                save_root=self.cfg["aaclip"]["save_root"],
-                defect_prompts=DEFECT_PROMPTS,
-                topk=int(self.cfg["aaclip"]["topk"]),
-                timeout_sec=int(self.cfg["aaclip"]["timeout_sec"]),
-                return_base64=self.cfg["output"]["return_base64"],
-                enable_repo=bool(self.cfg["aaclip"].get("enable_repo", False)),
-                temperature=float(self.cfg["aaclip"].get("temperature", 0.10)),
-                text_weight=float(self.cfg["aaclip"].get("text_weight", 0.4)),
-                tta_scales=tuple(self.cfg["aaclip"].get("tta_scales", [0.90, 1.00, 1.10])),
-                cache_dir=self.cfg["aaclip"].get("cache_dir", "cache/openclip_vitl14_336"),
-                support_dir=self.cfg["aaclip"].get("support_dir", None),
-                max_support_per_class=int(self.cfg["aaclip"].get("max_support_per_class", 20)),
-            )
-
         self.processed_dir = Path(CFG["processed_dir"]).resolve()
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
@@ -219,30 +196,6 @@ class ImageProcessor:
                 )
             z = self.zsclip.classify(img)
             return _top3_labels_from_topk(z.get("topk"))
-
-        if self.classifier == "aaclip":
-            if self.aac is None:
-                # Safety: initialisiere on-demand
-                self.aac = AAClipStage(
-                    repo_root=self.cfg["aaclip"]["repo_root"],
-                    data_root=self.cfg["aaclip"]["data_root"],
-                    model_name=self.cfg["aaclip"]["model_name"],
-                    shot=int(self.cfg["aaclip"]["shot"]),
-                    save_root=self.cfg["aaclip"]["save_root"],
-                    defect_prompts=DEFECT_PROMPTS,
-                    topk=int(self.cfg["aaclip"]["topk"]),
-                    timeout_sec=int(self.cfg["aaclip"]["timeout_sec"]),
-                    return_base64=self.cfg["output"]["return_base64"],
-                    enable_repo=bool(self.cfg["aaclip"].get("enable_repo", False)),
-                    temperature=float(self.cfg["aaclip"].get("temperature", 0.10)),
-                    text_weight=float(self.cfg["aaclip"].get("text_weight", 0.4)),
-                    tta_scales=tuple(self.cfg["aaclip"].get("tta_scales", [0.90, 1.00, 1.10])),
-                    cache_dir=self.cfg["aaclip"].get("cache_dir", "cache/openclip_vitl14_336"),
-                    support_dir=self.cfg["aaclip"].get("support_dir", None),
-                    max_support_per_class=int(self.cfg["aaclip"].get("max_support_per_class", 20)),
-                )
-            b = self.aac.infer(img)
-            return _top3_labels_from_topk(b.get("topk"))
 
         # Fallback
         return ["", "", ""]
@@ -381,7 +334,7 @@ class ImageProcessor:
             out["overlay_path"] = str(overlay_path)
 
             # ---- Nur bei Anomalie: 3 Defekt-Labels (je nach Klassifizierer)
-            if (not out["is_good"]) and self.classifier in ("zsclip", "aaclip"):
+            if (not out["is_good"]) and self.classifier in ("zsclip"):
                 labels_top3 = self._classify_top3(img)
                 out["defect_labels"] = labels_top3
 

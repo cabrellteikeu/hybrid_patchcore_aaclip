@@ -24,25 +24,6 @@ zsclip:
   temperature: 0.01           # kleiner = schärfer
   topk: 3
 
-aaclip:
-  repo_root: "C:/Users/Basti/AA-CLIP"
-  data_root: "C:/Users/Basti/AA-CLIP/data"
-  shot: 2
-  save_root: "C:/Users/Basti/AA-CLIP/runs"
-  support_json: "C:/Users/Basti/AA-CLIP/dataset/metadata/Bucket/2-shot.jsonl"
-  test_tmp_dir: "C:/Users/Basti/hybrid_patchcore_aaclip/results/aaclip/tmp_infer"     # pro Anfrage Bild+Ergebnis
-  full_json_path: "C:/Users/Basti/AA-CLIP/dataset/metadata/Bucket/full-shot.jsonl"
-  backbone: "ViT-L-14-336" #"RN50"        # oder "ViT-B/16"
-  model_name: "ViT-L-14-336" #"ViT-H-14"  
-  topk: 3
-  timeout_sec: 6000
-  temperature: 0.10
-  tta_scales: [0.90, 1.00, 1.10]
-  cache_dir: "cache/clip_vitl14_336"
-  support_dir: "support"
-  normal_key: normal         
-  abnormal_key: defective 
-
 textdefect:
   backend: "aa_clip"             # "clip_ad" | "aa_clip" | "promptad"
   model_name: "ViT-L-14-336" #"ViT-B-16"         # für Raspberry klein halten; B/16 @ 224 ist robust & schnell
