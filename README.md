@@ -126,7 +126,7 @@ Lege folgende Dateien **lokal** ab (nicht ins Repo):
 
 - **GroundingDINO** (nur bei Preprocessing):  
   `models/groundingDINO_SAM/groundingdino_swint_ogc.pth`  
-  [Download](https://huggingface.co/HCMUE-Research/SAM-vit-h/blob/main/sam_vit_h_4b8939.pth)
+  [Download](https://huggingface.co/pengxian/grounding-dino/blob/main/groundingdino_swint_ogc.pth)
 
 - **PatchCore Checkpoint**:  
   `models/patchcore/model_resnet50.ckpt`
