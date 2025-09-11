@@ -16,9 +16,9 @@ def main():
     parser.add_argument("--processed", type=str, default=CFG["processed_dir"], help="Output-Ordner für Overlays")
     parser.add_argument("--once", action="store_true", help="Nur bestehende Bilder paarweise verarbeiten und beenden")
     parser.add_argument("--watch", action="store_true", help="Ordner dauerhaft überwachen (paarweise Verarbeitung)")
-    parser.add_argument("--mode", type=str, choices=["pc_only", "dino_only", "ensemble"], default=None,
+    parser.add_argument("--mode", type=str, choices=["pc_only", "dino_only", "ensemble"], default="dino_only",
                         help="Pipeline-Engine: PatchCore, DINOv2 oder Ensemble (überschreibt Config)")
-    parser.add_argument("--classifier", type=str, choices=["zsclip", "none"], default=None,
+    parser.add_argument("--classifier", type=str, choices=["zsclip", "none"], default="zsclip",
                         help="Defekt-Klassifizierer: Zero-Shot CLIP, AA-CLIP oder keiner (überschreibt Config)")
     args = parser.parse_args()
 

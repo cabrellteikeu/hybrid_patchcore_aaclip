@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import cv2  # für Map-Resize bei Fusions-Overlay
 
-from src.patchcore.patchcore_infer import PatchCoreStage
+#from src.patchcore.patchcore_infer import PatchCoreStage
 from src.anomaly_dino.dino_stage import DinoAnomalyStage
 from src.classify.zsclip_defect_stage import ZSClipDefectStage
 from src.preprocess.grounded_sam import GroundedSAMPreprocessor
@@ -117,6 +117,7 @@ class ImageProcessor:
                 self.pre = None
 
         # ---- PatchCore
+        """
         self.pc_tau: float = float(self.cfg["patchcore"]["threshold"])
         self.patch = PatchCoreStage(
             ckpt_path=self.cfg["patchcore"]["ckpt_path"],
@@ -124,6 +125,7 @@ class ImageProcessor:
             device=self.cfg["device"],
             threshold=self.pc_tau,
         )
+        """
 
         # ---- DINOv2 (nur wenn benötigt)
         self.dino = None
